@@ -1,0 +1,20 @@
+{
+  "name": "gemini-export",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Export Google Gemini conversations (with equations) to Markdown, and a self-contained Markdown→.docx converter app.",
+  "scripts": {
+    "build:bookmarklet": "node build.js",
+    "build:app": "node md2docx/build-app.js",
+    "build": "node build.js && node md2docx/build-app.js",
+    "test": "node test/bundle-test.js"
+  },
+  "dependencies": {
+    "katex": "^0.18.1",
+    "marked": "^18.0.7"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "linkedom": "^0.18.0"
+  }
+}

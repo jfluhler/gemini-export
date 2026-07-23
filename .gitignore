@@ -1,0 +1,13 @@
+# Dependencies (recreated by `npm install`)
+node_modules/
+
+# npm bookkeeping
+package-lock.json
+npm-debug.log*
+
+# Test output (harnesses write to $TMPDIR/gemini-export-tests, but ignore any local strays)
+gemini-export-tests/
+*.tmp
+
+# OS cruft
+.DS_Store
