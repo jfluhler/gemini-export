@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Export Google Gemini conversations (with equations) to Markdown, and a self-contained Markdown→.docx converter app.",
+  "license": "MIT",
   "scripts": {
     "build:bookmarklet": "node build.js",
     "build:app": "node md2docx/build-app.js",
