@@ -2,6 +2,8 @@
 
 Export Google Gemini conversations — including equations — to Markdown and Word.
 
+**➤ [Download the ready-to-run tool](https://github.com/jfluhler/gemini-export/releases/latest/download/gemini-export-tool.zip)** (zip, no install) — or see all [Releases](https://github.com/jfluhler/gemini-export/releases). Unzip, open `install.html` and `md2docx.html` in your browser.
+
 ## Two pieces
 
 **1. Bookmarklet** (this folder) — a button you add to your browser's bookmarks bar.
