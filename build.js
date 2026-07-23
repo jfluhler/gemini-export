@@ -73,6 +73,10 @@ const html = `<!doctype html>
     <p>Why a separate app: Gemini's security policy blocks the in-page math engine the one-click
        <code>.docx</code> would need, so the conversion lives in the standalone file instead.</p>
   </div>
+
+  <p class="tip" style="margin-top:24px">Provided as an educational example of client-side DOM
+     extraction. Not affiliated with Google. You are responsible for ensuring your use complies with
+     applicable laws and the terms of service of any site you run it on.</p>
 </body>
 </html>`;
 

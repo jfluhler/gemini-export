@@ -43,3 +43,17 @@ npm install          # first time (installs katex, marked, jsdom, linkedom)
 npm run build        # rebuild bookmarklet + app
 npm test             # execute the shipped md2docx.html in a headless DOM
 ```
+
+## Disclaimer
+
+This project is provided as an educational **example of client-side DOM
+extraction** and document conversion. It is not affiliated with, endorsed by,
+or connected to Google, and "Gemini" is a trademark of its respective owner.
+
+You are solely responsible for how you use it. Ensure your use complies with
+all applicable laws and with the terms of service of any website you run it
+against (including Google Gemini's Terms of Service). Only export content you
+have the right to access and use.
+
+The software is provided "as is", without warranty of any kind — see
+[LICENSE](LICENSE).
