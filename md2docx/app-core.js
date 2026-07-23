@@ -58,8 +58,36 @@
    * 2. MathML -> OMML                                                 *
    * ================================================================ */
   function mmlChildren(el) { var s = ''; Array.prototype.forEach.call(el.childNodes, function (c) { s += mml(c); }); return s; }
-  function tokenRun(el) { var t = el.textContent; if (t == null || t === '') return ''; return '<m:r><m:t xml:space="preserve">' + xmlEsc(t) + '</m:t></m:r>'; }
+  function tokenRun(el) {
+    var t = el.textContent;
+    if (t == null || t === '') return '';
+    /* Drop invisible operators (U+2061 function application … U+2064). */
+    if (/^[⁡-⁤]+$/.test(t)) return '';
+    var tag = localName(el), rpr = '';
+    if (tag === 'mtext') rpr = '<m:rPr><m:nor/></m:rPr>';                        /* literal text: upright */
+    else if (el.getAttribute && el.getAttribute('mathvariant') === 'normal')
+      rpr = '<m:rPr><m:sty m:val="p"/></m:rPr>';                                 /* \operatorname etc.: upright */
+    return '<m:r>' + rpr + '<m:t xml:space="preserve">' + xmlEsc(t) + '</m:t></m:r>';
+  }
   function grp(el) { return el ? mml(el) : ''; }
+  function delimChar(c) { c = (c || '').trim(); return c === '.' ? '' : c; }
+  /* KaTeX wraps \left…\right groups in an <mrow> whose first/last children are
+   * fence operators — turn those into a stretchy OMML delimiter object. */
+  function mmlRow(el) {
+    var ch = kids(el);
+    if (ch.length >= 2) {
+      var a = ch[0], b = ch[ch.length - 1];
+      if (localName(a) === 'mo' && a.getAttribute('fence') === 'true' &&
+          localName(b) === 'mo' && b.getAttribute('fence') === 'true') {
+        var inner = '';
+        for (var i = 1; i < ch.length - 1; i++) inner += mml(ch[i]);
+        return '<m:d><m:dPr><m:begChr m:val="' + xmlAttr(delimChar(a.textContent)) +
+          '"/><m:endChr m:val="' + xmlAttr(delimChar(b.textContent)) + '"/></m:dPr><m:e>' +
+          inner + '</m:e></m:d>';
+      }
+    }
+    return mmlChildren(el);
+  }
   function mmlAccentOr(el, pos) {
     var c = kids(el), base = c[0], mark = c[1];
     var acc = el.getAttribute('accent') === 'true' || el.getAttribute('accentunder') === 'true';
@@ -92,7 +120,8 @@
     var el = node, tag = localName(el), c = kids(el);
     switch (tag) {
       case 'annotation': return '';
-      case 'math': case 'semantics': case 'mrow': case 'mstyle': case 'mpadded': case 'menclose': case 'mphantom': case 'merror': return mmlChildren(el);
+      case 'mrow': return mmlRow(el);
+      case 'math': case 'semantics': case 'mstyle': case 'mpadded': case 'menclose': case 'mphantom': case 'merror': return mmlChildren(el);
       case 'mi': case 'mn': case 'mo': case 'mtext': case 'ms': return tokenRun(el);
       case 'mspace': return '<m:r><m:t xml:space="preserve"> </m:t></m:r>';
       case 'mfrac': return '<m:f><m:fPr><m:type m:val="bar"/></m:fPr><m:num>' + grp(c[0]) + '</m:num><m:den>' + grp(c[1]) + '</m:den></m:f>';

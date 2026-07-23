@@ -14,7 +14,7 @@ global.katex = require('katex');
 
 const { mdToDocxBytes } = require('../md2docx/app-core.js');
 
-const md = fs.readFileSync('/Users/jfluhler/Downloads/gemini-conversation.md', 'utf8');
+const md = fs.readFileSync(path.join(__dirname, "fixture.md"), "utf8");
 const bytes = mdToDocxBytes(md);
 const outFile = path.join(OUT, 'from-markdown.docx');
 fs.writeFileSync(outFile, bytes);

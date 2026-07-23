@@ -7,7 +7,7 @@
     "build:bookmarklet": "node build.js",
     "build:app": "node md2docx/build-app.js",
     "build": "node build.js && node md2docx/build-app.js",
-    "test": "node test/bundle-test.js"
+    "test": "node test/bookmarklet-test.js && node test/bundle-test.js"
   },
   "dependencies": {
     "katex": "^0.18.1",

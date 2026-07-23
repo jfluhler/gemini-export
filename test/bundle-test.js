@@ -7,7 +7,7 @@ const OUT = path.join(os.tmpdir(), 'gemini-export-tests');
 fs.mkdirSync(OUT, { recursive: true });
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'md2docx', 'md2docx.html'), 'utf8');
-const md = fs.readFileSync('/Users/jfluhler/Downloads/gemini-conversation.md', 'utf8');
+const md = fs.readFileSync(path.join(__dirname, "fixture.md"), "utf8");
 
 const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
 const win = dom.window;
