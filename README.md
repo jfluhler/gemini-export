@@ -42,14 +42,18 @@ in-page, sharing the same `app-core.js` engine as the `md2docx` app (`build.js` 
 it to the bookmarklet).
 
 Because it borrows the page's own KaTeX, nothing is fetched and CSP never comes into
-play, and the bookmarklet stays ~60 KB instead of the ~500 KB a bundled KaTeX would cost.
+play, and the bookmarklet stays ~64 KB instead of the ~500 KB a bundled KaTeX would cost.
 Two Gemini-specific constraints the code has to respect:
 
 - `window.katex` is Google's internal, not a public API — it can disappear in any deploy.
   The button feature-detects it and falls back to advising the Markdown + `md2docx.html`
   route rather than failing silently.
-- Gemini enforces **Trusted Types**, so `innerHTML` assignment throws. The `.docx` path
-  clones nodes instead of serializing HTML. (`DOMParser` is unaffected.)
+- Gemini enforces **Trusted Types**, which guards `DOMParser.parseFromString` as well as
+  `innerHTML` — both throw. So no step may go through an HTML string: the conversion
+  clones nodes rather than serializing, and builds MathML with `katex.render()` into a
+  detached element rather than parsing `renderToString()` output. Getting this wrong fails
+  quietly, because the thrown error is caught and every equation degrades to literal LaTeX
+  text; `npm test` stubs the sink to throw so that can't regress unnoticed.
 
 ## Layout
 
