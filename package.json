@@ -1,6 +1,6 @@
 {
   "name": "gemini-export",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Export Google Gemini conversations (with equations) to Markdown, and a self-contained Markdown→.docx converter app.",
   "license": "MIT",

@@ -68,6 +68,18 @@
   /* ================================================================ *
    * 3. DOM -> Markdown                                                *
    * ================================================================ */
+  /* Page furniture that is not part of the conversation: copy buttons, icons,
+   * and Gemini's follow-up suggestion chips (buttons whose text runs together,
+   * e.g. "Where would you like to take this next?Derive the…"). Every export
+   * path drops these — they used to leak into the Markdown only. */
+  var CHROME_SEL = 'button,[role="button"],mat-icon,svg,.code-block-decoration';
+  function stripChrome(root) {
+    root.querySelectorAll(CHROME_SEL).forEach(function (n) { n.remove(); });
+    return root;
+  }
+  function isChrome(el) {
+    return !!(el.matches && el.matches(CHROME_SEL));
+  }
   function mdChildren(node) {
     var out = '';
     node.childNodes.forEach(function (child) { out += mdNode(child); });
@@ -80,6 +92,8 @@
 
     var el = node;
     var tag = el.tagName.toLowerCase();
+
+    if (isChrome(el)) return '';
 
     /* Gemini stores pristine LaTeX in data-math on .math-inline / .math-block. */
     if (el.classList.contains('math-inline')) {
@@ -197,39 +211,17 @@
   }
 
   /* ================================================================ *
-   * 4. KaTeX bridge — render LaTeX (data-math) to MathML for the .doc *
+   * 5. DOM -> Word-openable HTML (.doc, visual equations)             *
    * ================================================================ */
-  /* Use the page's KaTeX if it's exposed; otherwise the .doc path keeps
-   * KaTeX's visual render. Gemini's CSP blocks loading our own KaTeX, so
-   * native-equation .docx lives in the separate md2docx.html app. */
-  var KATEX = (typeof window !== 'undefined' && window.katex) ? window.katex : null;
-  function ensureKatex() { return Promise.resolve(KATEX); }
-  /* Delegate to AppCore (bundled ahead of this file by build.js) so both export
-   * paths share one implementation — this used to be a near-copy that parsed an
-   * HTML string, which Trusted Types blocks on Gemini, and the .doc silently
-   * fell back to KaTeX's visual render instead of real MathML. */
-  function latexToMath(latex, display) {
-    if (!KATEX || typeof AppCore === 'undefined') return null;
-    return AppCore.latexToMath(latex, display);
-  }
-
-  /* ================================================================ *
-   * 5. DOM -> Word-openable HTML (.doc, MathML equations)             *
-   * ================================================================ */
+  /* Deliberately keeps KaTeX's visual render rather than embedding MathML.
+   * Word's HTML importer mishandles block-level MathML: it renders the TeX
+   * <annotation> alongside the equation (each one twice) and swallows
+   * paragraphs sitting between two display equations. Both were observed in
+   * Word. The visual render has no such problems, and anyone wanting real
+   * equation objects should use the .docx button, which builds OMML directly
+   * instead of relying on Word to interpret HTML. */
   function cleanHtml(el) {
-    var clone = el.cloneNode(true);
-    /* Replace each math element with KaTeX-rendered MathML (Word/Pages read it
-     * as native equations). Without KaTeX, leave the existing visual render. */
-    clone.querySelectorAll('.math-inline,.math-block').forEach(function (n) {
-      var math = latexToMath(n.getAttribute('data-math') || '', n.classList.contains('math-block'));
-      if (math) {
-        while (n.firstChild) n.removeChild(n.firstChild);
-        n.appendChild(clone.ownerDocument.importNode(math, true));
-      }
-    });
-    clone.querySelectorAll('button,[role="button"],mat-icon,svg,.code-block-decoration')
-      .forEach(function (n) { n.remove(); });
-    return clone.innerHTML;
+    return stripChrome(el.cloneNode(true)).innerHTML;
   }
   /* ================================================================ *
    * 5b. DOM -> .docx (native equations, via the bundled AppCore)      *
@@ -245,10 +237,7 @@
       var h = document.createElement('h2');
       h.textContent = t.role === 'user' ? 'You' : 'Gemini';
       root.appendChild(h);
-      var clone = t.el.cloneNode(true);
-      clone.querySelectorAll('button,[role="button"],mat-icon,svg,.code-block-decoration')
-        .forEach(function (n) { n.remove(); });
-      root.appendChild(clone);
+      root.appendChild(stripChrome(t.el.cloneNode(true)));
       if (i < turns.length - 1) root.appendChild(document.createElement('hr'));
     });
     return root;
@@ -300,13 +289,9 @@
   function doWordDoc() {
     var turns = grab();
     if (!turns.length) { flash('No conversation found.'); return; }
-    flash('Preparing equations…');
-    ensureKatex().then(function () {
-      downloadBlob(fileBase() + '.doc',
-        new Blob(['﻿', toWordHtml(turns)], { type: 'application/msword' }));
-      flash('Downloaded .doc (' + turns.length + ' turns)' +
-        (KATEX ? '.' : ' — no math engine, using visual math.'));
-    });
+    downloadBlob(fileBase() + '.doc',
+      new Blob(['﻿', toWordHtml(turns)], { type: 'application/msword' }));
+    flash('Downloaded .doc (' + turns.length + ' turns) — equations as pictures.');
   }
 
   function doDocx() {

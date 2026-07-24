@@ -29,8 +29,18 @@ const page = `<!doctype html><html><body>
     <p>The relation is <span class="math-inline" data-math="E = mc^2"></span> where mass matters.</p>
     <div class="math-block" data-math="\\int_0^\\infty e^{-x}\\,dx = 1"></div>
     <div class="math-block" data-math="${HARD_TEX.replace(/"/g, '&quot;')}"></div>
+    <!-- A paragraph sandwiched between two display equations: Word's HTML
+         importer drops these when the .doc embeds block-level MathML. -->
+    <p>Substitute the complex envelope of the LFM chirp into <span class="math-inline" data-math="y(t)"></span>:</p>
+    <div class="math-block" data-math="y(t) = \\int u(x) dx"></div>
     <ul><li>speed of light <span class="math-inline" data-math="c"></span></li></ul>
     <button aria-label="copy">copy</button>
+    <!-- Gemini's follow-up suggestion chips: UI, not conversation. These sit
+         inside the exported .markdown element, which is how they leaked. -->
+    <div class="chips">
+      <span role="button">Derive the matched filter output</span>
+      <button>Compare Barker codes vs. LFM</button>
+    </div>
   </div></message-content>
 </conversation-container>
 </body></html>`;
@@ -82,6 +92,14 @@ async function blobText(b) {
   check('markdown display math $$…$$', md.indexOf('$$\\int_0^\\infty e^{-x}\\,dx = 1$$') !== -1);
   check('markdown user turn captured', /## You/.test(md) && /mass-energy relation/.test(md));
   check('markdown list item', md.indexOf('- speed of light $c$') !== -1);
+  /* All three exports must agree on what counts as conversation. Markdown was
+   * the odd one out: it kept copy buttons and suggestion chips. */
+  check('markdown keeps text between equations',
+    md.indexOf('Substitute the complex envelope of the LFM chirp into') !== -1);
+  check('markdown drops UI chrome',
+    md.indexOf('Derive the matched filter') === -1 &&
+    md.indexOf('Barker codes') === -1 &&
+    md.indexOf('copy') === -1);
 
   // --- Word .doc (async: waits on ensureKatex) ---
   byText('Download Word (.doc)').onclick();
@@ -89,6 +107,14 @@ async function blobText(b) {
   const doc = await blobText(captured.pop());
   check('.doc is Word HTML', /xmlns:w=/.test(doc) && /<h2/.test(doc));
   check('.doc includes both turns', /You/.test(doc) && /Gemini/.test(doc));
+  check('.doc drops UI chrome', doc.indexOf('Barker codes') === -1 && doc.indexOf('aria-label') === -1);
+  /* The .doc deliberately ships KaTeX's visual render, NOT MathML. Word's HTML
+   * importer renders the TeX <annotation> as a second copy of every equation,
+   * and drops paragraphs that sit between two display equations. Both were
+   * seen in Word. Use the .docx button for real equation objects. */
+  check('.doc embeds no MathML', !/<math/.test(doc) && !/<annotation/.test(doc));
+  check('.doc keeps text between equations',
+    doc.indexOf('Substitute the complex envelope of the LFM chirp into') !== -1);
 
   // --- Word .docx (DOM -> OMML -> zip, no Markdown round-trip) ---
   byText('Download Word (.docx)').onclick();
@@ -106,7 +132,10 @@ async function blobText(b) {
   check('.docx keeps both turns', /You/.test(raw) && /Gemini/.test(raw));
   check('.docx converted the hard equation', raw.indexOf('sinc') !== -1);
   check('.docx leaked no raw LaTeX', !/\\frac|\\tau|\\int|\\operatorname/.test(raw));
-  check('.docx dropped UI chrome', raw.indexOf('aria-label') === -1);
+  check('.docx dropped UI chrome',
+    raw.indexOf('aria-label') === -1 && raw.indexOf('Barker codes') === -1);
+  check('.docx keeps text between equations',
+    raw.indexOf('Substitute the complex envelope of the LFM chirp into') !== -1);
 
   check('.docx reported no LaTeX fallbacks', win.AppCore.mathFallbacks() === 0);
 

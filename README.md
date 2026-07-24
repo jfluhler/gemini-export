@@ -15,7 +15,7 @@ On a `gemini.google.com` conversation it shows a small panel with a scope toggle
 (Whole chat / Last only) and three downloads:
 - **Word (.docx)** — a real `.docx` with native, editable equations, in one click.
 - **Markdown** — pristine LaTeX (`$…$` / `$$…$$`), read from Gemini's `data-math` source.
-- **Word (.doc)** — legacy format; opens in Word/Pages with equations shown.
+- **Word (.doc)** — legacy format; equations appear as pictures, not editable objects.
 
 <p align="center">
   <img src="assets/panel.png" alt="The Gemini Export panel: Whole chat / Last only toggle, then Download Word (.docx), Download Markdown, Download Word (.doc)" width="300">
@@ -48,6 +48,13 @@ Two Gemini-specific constraints the code has to respect:
 - `window.katex` is Google's internal, not a public API — it can disappear in any deploy.
   The button feature-detects it and falls back to advising the Markdown + `md2docx.html`
   route rather than failing silently.
+The `.doc` export deliberately does **not** embed MathML — it ships KaTeX's visual
+render. A `.doc` is HTML that Word interprets, and Word's importer mishandles MathML
+badly: it renders the TeX `<annotation>` inside `<semantics>` as a second copy of every
+equation, and it silently drops paragraphs that sit between two display equations. Both
+were observed in Word. The `.docx` path avoids all of this by building OMML directly
+rather than asking Word to interpret HTML, so that is the one to use for real equations.
+
 - Gemini enforces **Trusted Types**, which guards `DOMParser.parseFromString` as well as
   `innerHTML` — both throw. So no step may go through an HTML string: the conversion
   clones nodes rather than serializing, and builds MathML with `katex.render()` into a

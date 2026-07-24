@@ -75,7 +75,8 @@ const html = `<!doctype html>
         <li><strong>Download Word (.docx)</strong> — a real <code>.docx</code> with native, editable
             equations. One click, no second step.</li>
         <li><strong>Download Markdown</strong> — clean <code>.md</code> with pristine LaTeX (<code>$…$</code> / <code>$$…$$</code>).</li>
-        <li><strong>Download Word (.doc)</strong> — legacy format; opens in Word/Pages with equations shown.</li>
+        <li><strong>Download Word (.doc)</strong> — legacy format. Equations appear as pictures rather
+            than editable objects; prefer the <code>.docx</code> above.</li>
       </ul>
     </li>
   </ol>
