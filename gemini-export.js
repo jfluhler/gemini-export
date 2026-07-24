@@ -1,21 +1,31 @@
 /*
  * Gemini Export — bookmarklet source
  *
- * Adds a small floating panel to gemini.google.com with two buttons:
- *   • Download Markdown    -> clean .md with pristine LaTeX ($…$ / $$…$$)
- *   • Download Word (.doc) -> opens in Word/Pages with equations shown
+ * Adds a small floating panel to gemini.google.com with three buttons:
+ *   • Download Word (.docx) -> real .docx, native editable equations
+ *   • Download Markdown     -> clean .md with pristine LaTeX ($…$ / $$…$$)
+ *   • Download Word (.doc)  -> legacy HTML-flavoured doc, equations shown
  *
  * Gemini stores the original LaTeX in `data-math` attributes on .math-inline /
- * .math-block elements; Markdown reads those directly. The .doc embeds
- * KaTeX-rendered MathML when the page exposes KaTeX, otherwise it keeps the
- * existing visual render. Native-equation .docx conversion lives in the
- * separate md2docx.html app (Gemini's CSP blocks the in-page math engine that
- * a one-click .docx would need).
+ * .math-block elements; every path reads those rather than the rendered math,
+ * because Gemini renders KaTeX with output:'html' — there is no MathML and no
+ * TeX annotation in the DOM, only aria-hidden spans.
+ *
+ * The .docx path bundles md2docx's AppCore (build.js prepends it) and converts
+ * in-page: data-math -> KaTeX MathML -> OMML -> zip. It borrows the page's own
+ * window.katex, so no script is fetched and CSP is never involved; if Gemini
+ * ever stops exposing katex, the button degrades to advising the Markdown +
+ * md2docx.html route. Nodes are cloned rather than innerHTML-assigned, since
+ * Gemini enforces Trusted Types.
  */
 (function () {
   'use strict';
 
   var PANEL_ID = 'gemini-export-panel';
+  /* build.js substitutes the package.json version here. Running this file
+   * unbuilt (the test harness does) leaves the placeholder, so show 'dev'. */
+  var VERSION = '__VERSION__';
+  if (VERSION.charAt(0) === '_') VERSION = 'dev';
 
   /* Toggle: if the panel is already open, close it and stop. */
   var existing = document.getElementById(PANEL_ID);
@@ -194,14 +204,13 @@
    * native-equation .docx lives in the separate md2docx.html app. */
   var KATEX = (typeof window !== 'undefined' && window.katex) ? window.katex : null;
   function ensureKatex() { return Promise.resolve(KATEX); }
+  /* Delegate to AppCore (bundled ahead of this file by build.js) so both export
+   * paths share one implementation — this used to be a near-copy that parsed an
+   * HTML string, which Trusted Types blocks on Gemini, and the .doc silently
+   * fell back to KaTeX's visual render instead of real MathML. */
   function latexToMath(latex, display) {
-    if (!KATEX) return null;
-    try {
-      var html = KATEX.renderToString(latex, { output: 'mathml', throwOnError: false, displayMode: !!display });
-      /* Parse inertly (no script execution, no live-DOM insertion). */
-      var doc = new DOMParser().parseFromString(html, 'text/html');
-      return doc.querySelector('math');
-    } catch (e) { return null; }
+    if (!KATEX || typeof AppCore === 'undefined') return null;
+    return AppCore.latexToMath(latex, display);
   }
 
   /* ================================================================ *
@@ -222,6 +231,32 @@
       .forEach(function (n) { n.remove(); });
     return clone.innerHTML;
   }
+  /* ================================================================ *
+   * 5b. DOM -> .docx (native equations, via the bundled AppCore)      *
+   * ================================================================ *
+   * Gemini renders KaTeX with output:'html' — the DOM holds no MathML and no
+   * TeX annotation, only aria-hidden spans. So we never read the rendered
+   * math: AppCore re-renders the pristine LaTeX from `data-math` through the
+   * page's own KaTeX. Nodes are cloned (never innerHTML-assigned) because
+   * Gemini enforces Trusted Types. */
+  function buildDocBody(turns) {
+    var root = document.createElement('div');
+    turns.forEach(function (t, i) {
+      var h = document.createElement('h2');
+      h.textContent = t.role === 'user' ? 'You' : 'Gemini';
+      root.appendChild(h);
+      var clone = t.el.cloneNode(true);
+      clone.querySelectorAll('button,[role="button"],mat-icon,svg,.code-block-decoration')
+        .forEach(function (n) { n.remove(); });
+      root.appendChild(clone);
+      if (i < turns.length - 1) root.appendChild(document.createElement('hr'));
+    });
+    return root;
+  }
+  function hasMathEngine() {
+    return !!(window.katex && typeof window.katex.renderToString === 'function');
+  }
+
   function toWordHtml(turns) {
     var body = '';
     turns.forEach(function (t) {
@@ -274,6 +309,32 @@
     });
   }
 
+  function doDocx() {
+    var turns = grab();
+    if (!turns.length) { flash('No conversation found.'); return; }
+    /* window.katex is Gemini's internal, not an API — it can vanish in any
+     * deploy. Degrade to the Markdown + md2docx.html route instead of failing. */
+    if (!hasMathEngine() || typeof AppCore === 'undefined') {
+      flash('Math engine unavailable — use Markdown, then md2docx.html.');
+      return;
+    }
+    flash('Building .docx…');
+    try {
+      var bytes = AppCore.bodyToDocxBytes(buildDocBody(turns));
+      downloadBlob(fileBase() + '.docx', new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      }));
+      /* Say so when equations came out as literal LaTeX — that failure is
+       * invisible until you open the file in Word. */
+      var missed = AppCore.mathFallbacks();
+      flash(missed
+        ? 'Downloaded .docx, but ' + missed + ' equation(s) stayed as LaTeX text.'
+        : 'Downloaded .docx (' + turns.length + ' turns).');
+    } catch (e) {
+      flash('Error: ' + (e && e.message ? e.message : e));
+    }
+  }
+
   function btn(text, onClick) {
     var b = document.createElement('button');
     b.textContent = text;
@@ -294,6 +355,12 @@
   var title = document.createElement('div');
   title.textContent = 'Gemini Export';
   title.style.cssText = 'font-weight:700;margin-bottom:8px;';
+  /* Version matters here: the bookmarklet is a copied-once snapshot, so a stale
+   * bookmark is invisible without it. */
+  var ver = document.createElement('span');
+  ver.textContent = ' v' + VERSION;
+  ver.style.cssText = 'font-weight:400;font-size:11px;color:#80868b;';
+  title.appendChild(ver);
   var close = document.createElement('span');
   close.textContent = '×';
   close.style.cssText = 'float:right;cursor:pointer;font-size:18px;line-height:14px;color:#5f6368;';
@@ -328,6 +395,7 @@
 
   panel.appendChild(title);
   panel.appendChild(scopeWrap);
+  panel.appendChild(btn('Download Word (.docx)', doDocx));
   panel.appendChild(btn('Download Markdown', doMarkdown));
   panel.appendChild(btn('Download Word (.doc)', doWordDoc));
   panel.appendChild(status);

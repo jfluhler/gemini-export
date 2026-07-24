@@ -12,24 +12,44 @@ Export Google Gemini conversations — including equations — to Markdown and W
 
 **1. Bookmarklet** (this folder) — a button you add to your browser's bookmarks bar.
 On a `gemini.google.com` conversation it shows a small panel with a scope toggle
-(Whole chat / Last only) and two downloads:
+(Whole chat / Last only) and three downloads:
+- **Word (.docx)** — a real `.docx` with native, editable equations, in one click.
 - **Markdown** — pristine LaTeX (`$…$` / `$$…$$`), read from Gemini's `data-math` source.
-- **Word (.doc)** — opens in Word/Pages with equations shown.
+- **Word (.doc)** — legacy format; opens in Word/Pages with equations shown.
 
 <p align="center">
-  <img src="assets/panel.png" alt="The Gemini Export panel: Whole chat / Last only toggle, Download Markdown, Download Word (.doc)" width="300">
+  <img src="assets/panel.png" alt="The Gemini Export panel: Whole chat / Last only toggle, then Download Word (.docx), Download Markdown, Download Word (.doc)" width="300">
 </p>
 
 To install: open **`install.html`** and drag the **⬇️ Gemini Export** button to your bookmarks bar.
 
-**2. `md2docx/` app** — a self-contained `md2docx.html`. Double-click it, drag a `.md`
+**2. `md2docx/` app** — a self-contained `md2docx.html`. Double-click it, drag any `.md`
 file on, and it downloads a real **`.docx` with native, editable equations**. Runs
-entirely on-device (no upload, no install). This is where native-equation `.docx`
-conversion lives, because Gemini's CSP blocks the in-page math engine the bookmarklet
-would otherwise need.
+entirely on-device (no upload, no install).
 
-**Typical workflow:** bookmarklet → *Download Markdown* → drop the `.md` on `md2docx.html` → `.docx`
-(open in Word, or in Pages via File → Open).
+**Typical workflow:** bookmarklet → *Download Word (.docx)* → open in Word (or in Pages
+via File → Open). Use the `md2docx.html` app for Markdown from anywhere else, or as the
+fallback described below.
+
+### How the one-click `.docx` works
+
+Gemini renders equations with KaTeX in `output: 'html'` mode, so the page contains **no
+MathML and no TeX annotation** — only `aria-hidden` spans. Reading the rendered math
+therefore gets you nothing; a DOM-scraping converter finds zero equations. What the page
+*does* have is the original LaTeX in `data-math` attributes, plus KaTeX itself on
+`window`. The bookmarklet uses both: `data-math` → KaTeX MathML → OMML → zip, all
+in-page, sharing the same `app-core.js` engine as the `md2docx` app (`build.js` prepends
+it to the bookmarklet).
+
+Because it borrows the page's own KaTeX, nothing is fetched and CSP never comes into
+play, and the bookmarklet stays ~60 KB instead of the ~500 KB a bundled KaTeX would cost.
+Two Gemini-specific constraints the code has to respect:
+
+- `window.katex` is Google's internal, not a public API — it can disappear in any deploy.
+  The button feature-detects it and falls back to advising the Markdown + `md2docx.html`
+  route rather than failing silently.
+- Gemini enforces **Trusted Types**, so `innerHTML` assignment throws. The `.docx` path
+  clones nodes instead of serializing HTML. (`DOMParser` is unaffected.)
 
 ## Layout
 
@@ -37,6 +57,7 @@ would otherwise need.
 .                     bookmarklet source + built artifacts
 ├── gemini-export.js  bookmarklet source (edit here)
 ├── build.js          builds bookmarklet.txt + install.html
+├── release.js        packages dist/gemini-export-tool.zip
 ├── install.html      drag-to-install page   (generated)
 ├── bookmarklet.txt   raw javascript: URL     (generated)
 ├── md2docx/          the Markdown → .docx app
@@ -51,8 +72,15 @@ would otherwise need.
 ```
 npm install          # first time (installs katex, marked, jsdom, linkedom)
 npm run build        # rebuild bookmarklet + app
-npm test             # execute the shipped md2docx.html in a headless DOM
+npm test             # run both harnesses in a headless DOM
+npm run release      # package dist/gemini-export-tool.zip (build first)
 ```
+
+The bookmarklet's version comes from `package.json` and is shown in the panel —
+bookmarklets are copied, not linked, so a stale bookmark is otherwise invisible.
+`npm test` covers the Trusted Types path explicitly: Gemini enforces TT, and the
+tests stub `DOMParser.parseFromString` to throw so a regression fails the suite
+instead of silently emitting equations as literal LaTeX.
 
 ## Disclaimer
 

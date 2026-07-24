@@ -146,9 +146,23 @@
     nodes.forEach(function (n) { if (n.nodeType === 1 && localName(n) === 'annotation') return; out += mml(n); });
     return out;
   }
+  /* Build the MathML as real DOM nodes: katex.render() uses createElement /
+   * appendChild, so it survives where HTML-string parsing does not. Gemini
+   * enforces Trusted Types, which makes DOMParser.parseFromString (and
+   * innerHTML) throw — the bookmarklet runs in that document. The string path
+   * remains as a fallback for hosts that expose renderToString but not render. */
   function latexToMath(latex, display) {
+    var opts = { output: 'mathml', throwOnError: false, displayMode: !!display };
     try {
-      var html = katex.renderToString(latex, { output: 'mathml', throwOnError: false, displayMode: !!display });
+      if (typeof document !== 'undefined' && typeof katex.render === 'function') {
+        var host = document.createElement('div');
+        katex.render(latex, host, opts);
+        var m = host.querySelector('math');
+        if (m) return m;
+      }
+    } catch (e) { /* fall through to the string path */ }
+    try {
+      var html = katex.renderToString(latex, opts);
       var doc = new DOMParser().parseFromString(html, 'text/html');
       return doc.querySelector('math');
     } catch (e) { return null; }
@@ -159,6 +173,10 @@
    * 3. HTML DOM -> WordprocessingML                                   *
    * ================================================================ */
   var F0 = {};
+  /* Equations that could not be converted and were written out as literal
+   * LaTeX. Callers check this after a conversion so a silently degraded
+   * document is visible instead of just looking wrong in Word. */
+  var MATH_FALLBACKS = 0;
   function assign(f, extra) { var o = {}, k; for (k in f) o[k] = f[k]; if (extra) for (k in extra) o[k] = extra[k]; return o; }
   function runText(text, f) {
     if (!text) return '';
@@ -178,7 +196,9 @@
       var latex = (el.getAttribute('data-math') || '').trim();
       if (!latex) return '';
       var mo = latexToOmml(latex, el.classList.contains('math-block'));
-      return mo ? '<m:oMath>' + mo + '</m:oMath>' : runText(latex, assign(f, { i: 1 }));
+      if (mo) return '<m:oMath>' + mo + '</m:oMath>';
+      MATH_FALLBACKS++;
+      return runText(latex, assign(f, { i: 1 }));
     }
     switch (tag) {
       case 'br': return '<w:br/>';
@@ -196,6 +216,7 @@
     if (!latex) return '';
     var om = latexToOmml(latex, true);
     if (om) return '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><m:oMathPara><m:oMath>' + om + '</m:oMath></m:oMathPara></w:p>';
+    MATH_FALLBACKS++;
     return para(runText(latex, { i: 1 }), '<w:pPr><w:jc w:val="center"/></w:pPr>');
   }
   function listBlocks(listEl, ordered, depth) {
@@ -276,6 +297,7 @@
     return out;
   }
   function documentXml(bodyEl) {
+    MATH_FALLBACKS = 0;
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
       'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>' +
@@ -313,17 +335,33 @@
   var CONTENT_TYPES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
   var DOT_RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
 
-  function mdToDocxBytes(md) {
-    var html = mdToHtml(md);
-    var doc = new DOMParser().parseFromString('<!doctype html><html><body>' + html + '</body></html>', 'text/html');
+  /* Package any DOM element's children as a .docx. The element only has to use
+   * plain HTML tags plus .math-inline / .math-block carrying `data-math` —
+   * which is also how Gemini marks up its own equations, so the bookmarklet can
+   * hand us a cloned conversation directly (no Markdown round-trip). */
+  function bodyToDocxBytes(bodyEl) {
     var enc = new TextEncoder();
     return zipSync([
       { name: '[Content_Types].xml', data: enc.encode(CONTENT_TYPES) },
       { name: '_rels/.rels', data: enc.encode(DOT_RELS) },
-      { name: 'word/document.xml', data: enc.encode(documentXml(doc.body)) }
+      { name: 'word/document.xml', data: enc.encode(documentXml(bodyEl)) }
     ]);
   }
 
-  root.AppCore = { mdToDocxBytes: mdToDocxBytes, mdToHtml: mdToHtml, documentXml: documentXml };
+  function mdToDocxBytes(md) {
+    var html = mdToHtml(md);
+    var doc = new DOMParser().parseFromString('<!doctype html><html><body>' + html + '</body></html>', 'text/html');
+    return bodyToDocxBytes(doc.body);
+  }
+
+  root.AppCore = {
+    mdToDocxBytes: mdToDocxBytes,
+    bodyToDocxBytes: bodyToDocxBytes,
+    mdToHtml: mdToHtml,
+    documentXml: documentXml,
+    latexToMath: latexToMath,
+    /* Equations written as literal LaTeX by the most recent conversion. */
+    mathFallbacks: function () { return MATH_FALLBACKS; }
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.AppCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

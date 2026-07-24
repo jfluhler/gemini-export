@@ -11,3 +11,6 @@ gemini-export-tests/
 
 # OS cruft
 .DS_Store
+
+# Release artifacts (recreated by `npm run release`)
+dist/
